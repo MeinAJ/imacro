@@ -1,0 +1,999 @@
+{
+  "manifestVersion": "3.2",
+  "proxies": [
+    {
+      "address": "0xC0AF09A3986b237Faf6a66AC94C49376953F93DA",
+      "txHash": "0xb5e7bc24cb4879b2891d690c851b948a2d1eea3c0a65afb054dc90003bcabbb0",
+      "kind": "uups"
+    }
+  ],
+  "impls": {
+    "5c5e832135b29b8d9348f4ff7816032db6a5841ffb9c190e997532b43c0901cf": {
+      "address": "0xfd7FE61173872108F08292a17e2DC82a7D10aB90",
+      "txHash": "0x19fac8e4c823bbac4aa861eb91ec764b106599ef0b386d6a089b4e55406e79cd",
+      "layout": {
+        "solcVersion": "0.8.28",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:169"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:111"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:40"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "feeReceiver",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:21"
+          },
+          {
+            "label": "feeReceiverAmount",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:22"
+          },
+          {
+            "label": "aaveTokenAddress",
+            "offset": 0,
+            "slot": "203",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:26"
+          },
+          {
+            "label": "usdcTokenAddress",
+            "offset": 0,
+            "slot": "204",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:28"
+          },
+          {
+            "label": "chainlinkAddress",
+            "offset": 0,
+            "slot": "205",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:30"
+          },
+          {
+            "label": "supportedCollateralAddresses",
+            "offset": 0,
+            "slot": "206",
+            "type": "t_array(t_address)dyn_storage",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:32"
+          },
+          {
+            "label": "liquidationPenaltyFeeRate4Protocol",
+            "offset": 0,
+            "slot": "207",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:34"
+          },
+          {
+            "label": "liquidationPenaltyFeeRate4Cleaner",
+            "offset": 0,
+            "slot": "208",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:39"
+          },
+          {
+            "label": "utilizationRate",
+            "offset": 0,
+            "slot": "209",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:44"
+          },
+          {
+            "label": "totalBorrow",
+            "offset": 0,
+            "slot": "210",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:47"
+          },
+          {
+            "label": "totalLend",
+            "offset": 0,
+            "slot": "211",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:49"
+          },
+          {
+            "label": "interestRate",
+            "offset": 0,
+            "slot": "212",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:50"
+          },
+          {
+            "label": "userLendAmount",
+            "offset": 0,
+            "slot": "213",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:52"
+          },
+          {
+            "label": "userLendLastTime",
+            "offset": 0,
+            "slot": "214",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:55"
+          },
+          {
+            "label": "userLendLastTimeCalculateFee",
+            "offset": 0,
+            "slot": "215",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:56"
+          },
+          {
+            "label": "tokenBorrower",
+            "offset": 0,
+            "slot": "216",
+            "type": "t_mapping(t_address,t_array(t_address)dyn_storage)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:57"
+          },
+          {
+            "label": "userBorrowDepositedAmount",
+            "offset": 0,
+            "slot": "217",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:59"
+          },
+          {
+            "label": "userBorrowAmount",
+            "offset": 0,
+            "slot": "218",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:62"
+          },
+          {
+            "label": "userBorrowLastTime",
+            "offset": 0,
+            "slot": "219",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:64"
+          },
+          {
+            "label": "userBorrowLastTimeCalculateFee",
+            "offset": 0,
+            "slot": "220",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:68"
+          },
+          {
+            "label": "collaterals",
+            "offset": 0,
+            "slot": "221",
+            "type": "t_mapping(t_address,t_struct(Collateral)1494_storage)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:70"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_mapping(t_address,t_array(t_address)dyn_storage)": {
+            "label": "mapping(address => address[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(Collateral)1494_storage)": {
+            "label": "mapping(address => struct Aave2Pool.Collateral)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(Collateral)1494_storage": {
+            "label": "struct Aave2Pool.Collateral",
+            "members": [
+              {
+                "label": "tokenAddress",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "utilizationRate",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "borrowed",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "borrowable",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "healthFactor",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "liquidationThreshold",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "5"
+              },
+              {
+                "label": "collateralizationRatio",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "6"
+              }
+            ],
+            "numberOfBytes": "224"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {}
+      }
+    },
+    "0d348ca474d5dc6561388ee3df7420991dbf8aff55387bfc9cbdd0edeb0e526e": {
+      "address": "0x41E024e2a8e4327f4DC64be3326BDee5bc1A99E1",
+      "txHash": "0x8459fb21758388e332a911f835418d80717bafa939768a9caf83c5235af4a92a",
+      "layout": {
+        "solcVersion": "0.8.28",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:169"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:111"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:40"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "feeReceiver",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:21"
+          },
+          {
+            "label": "feeReceiverAmount",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:22"
+          },
+          {
+            "label": "aaveTokenAddress",
+            "offset": 0,
+            "slot": "203",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:26"
+          },
+          {
+            "label": "usdcTokenAddress",
+            "offset": 0,
+            "slot": "204",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:28"
+          },
+          {
+            "label": "chainlinkAddress",
+            "offset": 0,
+            "slot": "205",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:30"
+          },
+          {
+            "label": "supportedCollateralAddresses",
+            "offset": 0,
+            "slot": "206",
+            "type": "t_array(t_address)dyn_storage",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:32"
+          },
+          {
+            "label": "liquidationPenaltyFeeRate4Protocol",
+            "offset": 0,
+            "slot": "207",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:34"
+          },
+          {
+            "label": "liquidationPenaltyFeeRate4Cleaner",
+            "offset": 0,
+            "slot": "208",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:39"
+          },
+          {
+            "label": "utilizationRate",
+            "offset": 0,
+            "slot": "209",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:44"
+          },
+          {
+            "label": "totalBorrow",
+            "offset": 0,
+            "slot": "210",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:47"
+          },
+          {
+            "label": "totalLend",
+            "offset": 0,
+            "slot": "211",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:49"
+          },
+          {
+            "label": "interestRate",
+            "offset": 0,
+            "slot": "212",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:50"
+          },
+          {
+            "label": "userLendAmount",
+            "offset": 0,
+            "slot": "213",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:52"
+          },
+          {
+            "label": "userLendLastTime",
+            "offset": 0,
+            "slot": "214",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:55"
+          },
+          {
+            "label": "userLendLastTimeCalculateFee",
+            "offset": 0,
+            "slot": "215",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:56"
+          },
+          {
+            "label": "tokenBorrower",
+            "offset": 0,
+            "slot": "216",
+            "type": "t_mapping(t_address,t_array(t_address)dyn_storage)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:57"
+          },
+          {
+            "label": "userBorrowDepositedAmount",
+            "offset": 0,
+            "slot": "217",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:59"
+          },
+          {
+            "label": "userBorrowAmount",
+            "offset": 0,
+            "slot": "218",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:62"
+          },
+          {
+            "label": "userBorrowLastTime",
+            "offset": 0,
+            "slot": "219",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:64"
+          },
+          {
+            "label": "userBorrowLastTimeCalculateFee",
+            "offset": 0,
+            "slot": "220",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:68"
+          },
+          {
+            "label": "collaterals",
+            "offset": 0,
+            "slot": "221",
+            "type": "t_mapping(t_address,t_struct(Collateral)2202_storage)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:70"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_mapping(t_address,t_array(t_address)dyn_storage)": {
+            "label": "mapping(address => address[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(Collateral)2202_storage)": {
+            "label": "mapping(address => struct Aave2Pool.Collateral)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(Collateral)2202_storage": {
+            "label": "struct Aave2Pool.Collateral",
+            "members": [
+              {
+                "label": "tokenAddress",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "utilizationRate",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "borrowed",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "borrowable",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "healthFactor",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "liquidationThreshold",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "5"
+              },
+              {
+                "label": "collateralizationRatio",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "6"
+              }
+            ],
+            "numberOfBytes": "224"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {}
+      }
+    },
+    "c5ab8830e9a6a5e69b67bfc334c63a4a5940ea670e02629d62aae4c88513fad7": {
+      "address": "0x1a3FdB0eE3Bd19460Bbe3968C56888d1B7deD90f",
+      "txHash": "0xe7c2d7793b79caa9745b29168cb33ca69525fabc871e6874a35208f9dd61d5ee",
+      "layout": {
+        "solcVersion": "0.8.28",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:169"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:111"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:40"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "feeReceiver",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:21"
+          },
+          {
+            "label": "feeReceiverAmount",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:22"
+          },
+          {
+            "label": "aaveTokenAddress",
+            "offset": 0,
+            "slot": "203",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:26"
+          },
+          {
+            "label": "usdcTokenAddress",
+            "offset": 0,
+            "slot": "204",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:28"
+          },
+          {
+            "label": "chainlinkAddress",
+            "offset": 0,
+            "slot": "205",
+            "type": "t_address",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:30"
+          },
+          {
+            "label": "supportedCollateralAddresses",
+            "offset": 0,
+            "slot": "206",
+            "type": "t_array(t_address)dyn_storage",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:32"
+          },
+          {
+            "label": "liquidationPenaltyFeeRate4Protocol",
+            "offset": 0,
+            "slot": "207",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:34"
+          },
+          {
+            "label": "liquidationPenaltyFeeRate4Cleaner",
+            "offset": 0,
+            "slot": "208",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:39"
+          },
+          {
+            "label": "utilizationRate",
+            "offset": 0,
+            "slot": "209",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:44"
+          },
+          {
+            "label": "totalBorrow",
+            "offset": 0,
+            "slot": "210",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:47"
+          },
+          {
+            "label": "totalLend",
+            "offset": 0,
+            "slot": "211",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:49"
+          },
+          {
+            "label": "interestRate",
+            "offset": 0,
+            "slot": "212",
+            "type": "t_uint256",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:50"
+          },
+          {
+            "label": "userLendAmount",
+            "offset": 0,
+            "slot": "213",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:52"
+          },
+          {
+            "label": "userLendLastTime",
+            "offset": 0,
+            "slot": "214",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:55"
+          },
+          {
+            "label": "userLendLastTimeCalculateFee",
+            "offset": 0,
+            "slot": "215",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:56"
+          },
+          {
+            "label": "tokenBorrower",
+            "offset": 0,
+            "slot": "216",
+            "type": "t_mapping(t_address,t_array(t_address)dyn_storage)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:57"
+          },
+          {
+            "label": "userBorrowDepositedAmount",
+            "offset": 0,
+            "slot": "217",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:59"
+          },
+          {
+            "label": "userBorrowAmount",
+            "offset": 0,
+            "slot": "218",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:62"
+          },
+          {
+            "label": "userBorrowLastTime",
+            "offset": 0,
+            "slot": "219",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:64"
+          },
+          {
+            "label": "userBorrowLastTimeCalculateFee",
+            "offset": 0,
+            "slot": "220",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:68"
+          },
+          {
+            "label": "collaterals",
+            "offset": 0,
+            "slot": "221",
+            "type": "t_mapping(t_address,t_struct(Collateral)2202_storage)",
+            "contract": "Aave2Pool",
+            "src": "contracts/Aave2Pool.sol:70"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_mapping(t_address,t_array(t_address)dyn_storage)": {
+            "label": "mapping(address => address[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(Collateral)2202_storage)": {
+            "label": "mapping(address => struct Aave2Pool.Collateral)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(Collateral)2202_storage": {
+            "label": "struct Aave2Pool.Collateral",
+            "members": [
+              {
+                "label": "tokenAddress",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "utilizationRate",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "borrowed",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "borrowable",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "healthFactor",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "liquidationThreshold",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "5"
+              },
+              {
+                "label": "collateralizationRatio",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "6"
+              }
+            ],
+            "numberOfBytes": "224"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {}
+      }
+    }
+  }
+}
