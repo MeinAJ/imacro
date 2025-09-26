@@ -5,7 +5,6 @@ library InterestCalculator {
     uint256 public constant PRECISION = 1e18;
     uint256 public constant SECONDS_PER_DAY = 86400;
     uint256 public constant RATE_PRECISION = 1e6;
-    uint256 public constant DOLLAR_PRECISION = 1e2;
 
     /**
      * @dev 计算每日复利的利息

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {IChainlink} from "./IChainlink.sol";
-import {InterestCalculator} from "./InterestCalculator.sol";
+import {DynamicInterestRateCalculator} from "./DynamicInterestRateCalculator.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -10,13 +10,13 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 
 contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
-    using InterestCalculator for uint256;
+    using DynamicInterestRateCalculator for uint256;
 
-    uint256 public constant TOKEN_DECIMALS = InterestCalculator.PRECISION; // 代币精度
+    uint256 public constant TOKEN_DECIMALS = DynamicInterestRateCalculator.PRECISION; // 代币精度
 
-    uint256 public constant RATE_DECIMALS = InterestCalculator.RATE_PRECISION; // 利率精度6位
+    uint256 public constant RATE_DECIMALS = DynamicInterestRateCalculator.RATE_PRECISION; // 利率精度6位
 
-    uint256 public constant DOLLAR_DECIMALS = InterestCalculator.DOLLAR_PRECISION; // 美元精度2位
+    uint256 public constant DOLLAR_DECIMALS = DynamicInterestRateCalculator.DOLLAR_PRECISION; // 美元精度2位
 
     address public feeReceiver; // 手续费接收地址
     uint256 public feeReceiverAmount; // 手续费接收数量
@@ -42,8 +42,11 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // total deposits，单位：USDC
     uint256 public totalLend;
 
-    // interest annual percentage rate
+    // interest annual percentage rate (deprecated - now calculated dynamically)
     uint256 public interestRate;
+
+    // reserve factor for supply rate calculation
+    uint256 public reserveFactor;
 
     // every address supply,key=user address,value=supply，单位：USDC
     mapping(address => uint256) public userLendAmount;
@@ -71,6 +74,8 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint256 healthFactor; // 健康因子
         uint256 liquidationThreshold; // 清算阈值
         uint256 collateralizationRatio; // 抵押率
+        uint256 riskFactor; // 风险值（6位精度）
+        uint256 maxBorrowableRatio; // 最大可借比例（基于风险调整）
     }
 
     event DepositLend(address indexed user, address pool, uint256 amount);
@@ -146,11 +151,46 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         userLendLastTimeCalculateFee[userAddress] = time;
     }
 
-    function setCollateral(address _tokenAddress, uint256 _healthFactor, uint256 _liquidationThreshold, uint256 _collateralizationRate) external onlyOwner {
+    function setCollateral(
+        address _tokenAddress, 
+        uint256 _healthFactor, 
+        uint256 _liquidationThreshold, 
+        uint256 _collateralizationRate,
+        uint256 _riskFactor
+    ) external onlyOwner {
         require(_tokenAddress != address(0), "Invalid token address");
         require(collaterals[_tokenAddress].tokenAddress == address(0), "Collateral already exists");
-        collaterals[_tokenAddress] = Collateral(_tokenAddress, 0, 0, 0, _healthFactor, _liquidationThreshold, _collateralizationRate);
+        require(_riskFactor <= RATE_DECIMALS, "Risk factor cannot exceed 100%");
+        
+        uint256 maxBorrowableRatio = DynamicInterestRateCalculator.calculateCollateralizationAdjustment(_riskFactor);
+        collaterals[_tokenAddress] = Collateral(
+            _tokenAddress, 
+            0, 
+            0, 
+            0, 
+            _healthFactor, 
+            _liquidationThreshold, 
+            _collateralizationRate,
+            _riskFactor,
+            maxBorrowableRatio
+        );
         supportedCollateralAddresses.push(_tokenAddress);
+    }
+
+    function updateCollateralRisk(address _tokenAddress, uint256 _riskFactor) external onlyOwner {
+        require(collaterals[_tokenAddress].tokenAddress == _tokenAddress, "Collateral does not exist");
+        require(_riskFactor <= RATE_DECIMALS, "Risk factor cannot exceed 100%");
+        
+        collaterals[_tokenAddress].riskFactor = _riskFactor;
+        collaterals[_tokenAddress].maxBorrowableRatio = DynamicInterestRateCalculator.calculateCollateralizationAdjustment(_riskFactor);
+        
+        // Recalculate borrowable amounts after risk update
+        _calculateBorrowable();
+    }
+
+    function setReserveFactor(uint256 _reserveFactor) external onlyOwner {
+        require(_reserveFactor <= RATE_DECIMALS, "Reserve factor cannot exceed 100%");
+        reserveFactor = _reserveFactor;
     }
 
     function getCollateral(address _tokenAddress) public view returns (Collateral memory) {
@@ -211,10 +251,28 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         return userBorrowAmount[_tokenAddress][_userAddress];
     }
 
-    // 当借出钱时，实时计算利率
-    function _getDynamicFeeRate(address _tokenAddress) internal view returns (uint256) {
+    // 当借出钱时，实时计算动态利率
+    function _getDynamicBorrowRate(address _tokenAddress) internal view returns (uint256) {
         require(collaterals[_tokenAddress].tokenAddress == _tokenAddress, "Invalid collateral address");
-        return 200000; // 假设利率为20%，因为精度是1000000，6位小数
+        uint256 utilizationRate = collaterals[_tokenAddress].utilizationRate;
+        return DynamicInterestRateCalculator.calculateBorrowRate(utilizationRate);
+    }
+
+    // 计算存款利率
+    function _getDynamicSupplyRate() internal view returns (uint256) {
+        uint256 globalUtilizationRate = getUtilizationRate();
+        uint256 borrowRate = DynamicInterestRateCalculator.calculateBorrowRate(globalUtilizationRate);
+        return DynamicInterestRateCalculator.calculateSupplyRate(globalUtilizationRate, borrowRate, reserveFactor);
+    }
+
+    // 获取特定抵押品的当前借贷利率
+    function getCurrentBorrowRate(address _tokenAddress) external view returns (uint256) {
+        return _getDynamicBorrowRate(_tokenAddress);
+    }
+
+    // 获取当前存款利率
+    function getCurrentSupplyRate() external view returns (uint256) {
+        return _getDynamicSupplyRate();
     }
 
     function _statusChanged() internal {
@@ -232,7 +290,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             uint256 collateralUtilizationRate = collaterals[_tokenAddress].utilizationRate;
             uint256 borrowed = collaterals[_tokenAddress].borrowed;
             uint256 borrowable = collaterals[_tokenAddress].borrowable;
-            uint256 collateralInterestRate = _getDynamicFeeRate(_tokenAddress);
+            uint256 collateralInterestRate = _getDynamicBorrowRate(_tokenAddress);
             uint256 healthFactor = collaterals[_tokenAddress].healthFactor;
             uint256 liquidationThreshold = collaterals[_tokenAddress].liquidationThreshold;
             uint256 collateralizationRatio = collaterals[_tokenAddress].collateralizationRatio;
@@ -255,7 +313,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         if (userLendLastTime[msg.sender] > 0) {
             // 需要计息了
             uint256 timePassed = nowTimestamp - userLendLastTimeCalculateFee[msg.sender];
-            uint256 fee = getFee(userLendAmount[msg.sender], interestRate, timePassed);
+            uint256 fee = getFee(userLendAmount[msg.sender], _getDynamicSupplyRate(), timePassed);
             if (fee > 0) {
                 // 每次交易时，都会将利息给一部分给平台
                 uint256 platformInterest = fee * liquidationPenaltyFeeRate4Protocol / RATE_DECIMALS;
@@ -291,7 +349,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         require(_getTotalBorrowable() >= _amount, "no more money");
         uint256 nowTimestamp = block.timestamp;
         uint256 timePassed = nowTimestamp - userLendLastTimeCalculateFee[msg.sender];
-        uint256 fee = getFee(userLendAmount[msg.sender], interestRate, timePassed);
+        uint256 fee = getFee(userLendAmount[msg.sender], _getDynamicSupplyRate(), timePassed);
         if (fee > 0) {
             // 有利息时，分一部分利息的钱给平台，剩下的给用户
             // 修改状态
@@ -319,7 +377,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function depositLendWithdrawAll() external {
         uint256 nowTimestamp = block.timestamp;
         uint256 timePassed = nowTimestamp - userLendLastTimeCalculateFee[msg.sender];
-        uint256 fee = getFee(userLendAmount[msg.sender], interestRate, timePassed);
+        uint256 fee = getFee(userLendAmount[msg.sender], _getDynamicSupplyRate(), timePassed);
         if (fee > 0) {
             // 有利息时，分一部分利息的钱给平台，剩下的给用户
             // 修改状态
@@ -382,7 +440,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         if (userBorrowLastTime[_tokenAddress][msg.sender] != 0) {
             // 第二次借出时，累加借出的利息
             uint256 timePassed = nowTimestamp - userBorrowLastTimeCalculateFee[_tokenAddress][msg.sender];
-            borrowFee = getFee(borrowUSDCAmount, _getDynamicFeeRate(_tokenAddress), timePassed);
+            borrowFee = getFee(borrowUSDCAmount, _getDynamicBorrowRate(_tokenAddress), timePassed);
             if (borrowFee > 0) {
                 // 平台收入fee
                 protocolFee = borrowFee * liquidationPenaltyFeeRate4Protocol / RATE_DECIMALS;
@@ -429,7 +487,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint256 nowTimestamp = block.timestamp;
         uint256 timePassed = nowTimestamp - userBorrowLastTimeCalculateFee[_tokenAddress][msg.sender];
         uint256 lastTimeUserBorrowAmount = userBorrowAmount[_tokenAddress][msg.sender];
-        uint256 fee = getFee(lastTimeUserBorrowAmount, _getDynamicFeeRate(_tokenAddress), timePassed);
+        uint256 fee = getFee(lastTimeUserBorrowAmount, _getDynamicBorrowRate(_tokenAddress), timePassed);
         uint256 protocolFee = fee * liquidationPenaltyFeeRate4Protocol / RATE_DECIMALS;
         // 总共需要还的钱
         uint256 needRepayAmount = lastTimeUserBorrowAmount + fee;
@@ -458,18 +516,38 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         return totalLend - totalBorrow;
     }
 
-    // 计算borrowable公式，（总的usdc - 总借出 - 总利息）/ 抵押代币种类数
+    // 计算borrowable公式，基于风险调整的分配
     function _calculateBorrowable() internal {
         uint256 totalBorrowable = totalLend - totalBorrow;
-        uint256 borrowable = totalBorrowable / supportedCollateralAddresses.length;
-        for (uint256 i; i < supportedCollateralAddresses.length; i++) {
+        if (totalBorrowable == 0 || supportedCollateralAddresses.length == 0) {
+            return;
+        }
+
+        // 计算总的风险调整权重
+        uint256 totalRiskAdjustedWeight = 0;
+        for (uint256 i = 0; i < supportedCollateralAddresses.length; i++) {
             address collateralAddress = supportedCollateralAddresses[i];
             Collateral storage collateral = collaterals[collateralAddress];
-            collateral.borrowable = borrowable;
-            if ((collateral.borrowable + collateral.borrowed) > 0) {
-                collateral.utilizationRate = (collateral.borrowed * RATE_DECIMALS) / (collateral.borrowable + collateral.borrowed);
+            totalRiskAdjustedWeight += collateral.maxBorrowableRatio;
+        }
+
+        // 根据风险调整权重分配borrowable
+        for (uint256 i = 0; i < supportedCollateralAddresses.length; i++) {
+            address collateralAddress = supportedCollateralAddresses[i];
+            Collateral storage collateral = collaterals[collateralAddress];
+            
+            // 基于风险调整的borrowable分配
+            collateral.borrowable = (totalBorrowable * collateral.maxBorrowableRatio) / totalRiskAdjustedWeight;
+            
+            // 计算利用率
+            uint256 totalSupply = collateral.borrowable + collateral.borrowed;
+            if (totalSupply > 0) {
+                collateral.utilizationRate = (collateral.borrowed * RATE_DECIMALS) / totalSupply;
+            } else {
+                collateral.utilizationRate = 0;
             }
-            emit CalculateBorrowable(collateralAddress, borrowable);
+            
+            emit CalculateBorrowable(collateralAddress, collateral.borrowable);
         }
     }
 
@@ -497,7 +575,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             for (uint256 i; i < borrowers.length; i++) {
                 address borrower = borrowers[i];
                 uint256 timePassed = nowTimestamp - userBorrowLastTimeCalculateFee[_tokenAddress][borrower];
-                uint256 latestFee = getFee(userBorrowAmount[_tokenAddress][borrower], _getDynamicFeeRate(_tokenAddress), timePassed);
+                uint256 latestFee = getFee(userBorrowAmount[_tokenAddress][borrower], _getDynamicBorrowRate(_tokenAddress), timePassed);
                 uint256 userTotal = userBorrowAmount[_tokenAddress][borrower] + latestFee;
                 // 总债务
                 uint256 userTotalDollar = userTotal * usdcPrice;
@@ -515,7 +593,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
                 for (uint256 i; i < borrowers.length; i++) {
                     address borrower = borrowers[i];
                     uint256 timePassed = nowTimestamp - userBorrowLastTimeCalculateFee[_tokenAddress][borrower];
-                    uint256 latestFee = getFee(userBorrowAmount[_tokenAddress][borrower], _getDynamicFeeRate(_tokenAddress), timePassed);
+                    uint256 latestFee = getFee(userBorrowAmount[_tokenAddress][borrower], _getDynamicBorrowRate(_tokenAddress), timePassed);
                     uint256 userTotal = userBorrowAmount[_tokenAddress][borrower] + latestFee;
                     // 总债务
                     uint256 userTotalDollar = userTotal * usdcPrice;
@@ -558,7 +636,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint256 timePassed = nowTimestamp - userBorrowLastTimeCalculateFee[_tokenAddress][_borrower];
         uint256 tokenPrice = IChainlink(chainlinkAddress).getTokenPrice(_tokenAddress);
         uint256 usdcPrice = IChainlink(chainlinkAddress).getTokenPrice(usdcTokenAddress);
-        uint256 latestFee = getFee(userBorrowAmount[_tokenAddress][_borrower], _getDynamicFeeRate(_tokenAddress), timePassed);
+        uint256 latestFee = getFee(userBorrowAmount[_tokenAddress][_borrower], _getDynamicBorrowRate(_tokenAddress), timePassed);
         uint256 protocolFee = latestFee * liquidationPenaltyFeeRate4Protocol / RATE_DECIMALS;
         uint256 userTotal = userBorrowAmount[_tokenAddress][_borrower] + latestFee;
         // 总债务
