@@ -27,6 +27,15 @@ SEPOLIA_PK_THREE = "0x4c42dcc67be02d2c1c44d50c3064394f1db90ef56936ab30b6cb21ff3d
 
 ### [编写部署AAVE代币、USDC代币、TOSHI代币、DEGEN代币；](solidity/scripts/v2/Aave2Deploy.js)
 
+### 找不到hardhat模块时
+```
+# 删除node_modules和lock文件
+rm -rf node_modules
+rm package-lock.json
+# 重新安装
+npm install
+```
+
 ### 先本地部署测试
 ```
 npx hardhat node

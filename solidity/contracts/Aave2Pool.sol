@@ -254,8 +254,8 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // 当借出钱时，实时计算动态利率
     function _getDynamicBorrowRate(address _tokenAddress) internal view returns (uint256) {
         require(collaterals[_tokenAddress].tokenAddress == _tokenAddress, "Invalid collateral address");
-        uint256 utilizationRate = collaterals[_tokenAddress].utilizationRate;
-        return DynamicInterestRateCalculator.calculateBorrowRate(utilizationRate);
+        uint256 dynamicUtilizationRate = collaterals[_tokenAddress].utilizationRate;
+        return DynamicInterestRateCalculator.calculateBorrowRate(dynamicUtilizationRate);
     }
 
     // 计算存款利率
