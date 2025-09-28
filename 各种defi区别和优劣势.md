@@ -1,1 +1,0 @@
-AAVE是以ETH作为计价单位，而compound则是以USD作为计价单位。

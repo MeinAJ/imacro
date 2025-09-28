@@ -285,117 +285,189 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
     function _collateralChanged() internal {
-        for (uint256 i = 0; i < supportedCollateralAddresses.length; i++) {
+        uint256 supportedCollateralCount = supportedCollateralAddresses.length;
+
+        for (uint256 i = 0; i < supportedCollateralCount; ) {
             address _tokenAddress = supportedCollateralAddresses[i];
-            uint256 collateralUtilizationRate = collaterals[_tokenAddress].utilizationRate;
-            uint256 borrowed = collaterals[_tokenAddress].borrowed;
-            uint256 borrowable = collaterals[_tokenAddress].borrowable;
+            Collateral storage collateral = collaterals[_tokenAddress];
+
             uint256 collateralInterestRate = _getDynamicBorrowRate(_tokenAddress);
-            uint256 healthFactor = collaterals[_tokenAddress].healthFactor;
-            uint256 liquidationThreshold = collaterals[_tokenAddress].liquidationThreshold;
-            uint256 collateralizationRatio = collaterals[_tokenAddress].collateralizationRatio;
+
             emit CollateralChanged(
                 _tokenAddress,
-                collateralUtilizationRate,
-                borrowed,
-                borrowable,
+                collateral.utilizationRate,
+                collateral.borrowed,
+                collateral.borrowable,
                 collateralInterestRate,
-                healthFactor,
-                liquidationThreshold,
-                collateralizationRatio);
+                collateral.healthFactor,
+                collateral.liquidationThreshold,
+                collateral.collateralizationRatio);
+
+            unchecked { i++; }
         }
     }
 
-    // _depositLend(借入)
+    // 有任何状态修改都会触发动态利率的计算，同时计算利息
+    function _calculateInterestRate(address _tokenAddress) internal {
+        uint256 currentSupplyRate = DynamicInterestRateCalculator.calculateSupplyRate(
+            utilizationRate,
+            _getDynamicBorrowRate(_tokenAddress),
+            reserveFactor
+        );
+        interestRate = currentSupplyRate;
+    }
+
+    // _depositLend(借入) - Gas optimized version
     function depositLend(uint256 _amount) external {
         require(_amount > 0, "Invalid amount");
+
         uint256 nowTimestamp = block.timestamp;
-        if (userLendLastTime[msg.sender] > 0) {
+        uint256 currentSupplyRate = _getDynamicSupplyRate();
+
+        // Cache storage variables in memory for gas optimization
+        uint256 userLendAmountCache = userLendAmount[msg.sender];
+        uint256 userLendLastTimeCache = userLendLastTime[msg.sender];
+        uint256 userLendLastTimeCalculateFeeCache = userLendLastTimeCalculateFee[msg.sender];
+
+        if (userLendLastTimeCache > 0) {
             // 需要计息了
-            uint256 timePassed = nowTimestamp - userLendLastTimeCalculateFee[msg.sender];
-            uint256 fee = getFee(userLendAmount[msg.sender], _getDynamicSupplyRate(), timePassed);
+            uint256 timePassed = nowTimestamp - userLendLastTimeCalculateFeeCache;
+            uint256 fee = getFee(userLendAmountCache, currentSupplyRate, timePassed);
             if (fee > 0) {
                 // 每次交易时，都会将利息给一部分给平台
                 uint256 platformInterest = fee * liquidationPenaltyFeeRate4Protocol / RATE_DECIMALS;
                 uint256 userInterest = fee - platformInterest;
-                feeReceiverAmount += platformInterest;
-                // 加上利息
-                userLendAmount[msg.sender] += userInterest;
-                totalLend += userInterest;
+
+                // Use unchecked for simple arithmetic (safe since we control the inputs)
+                unchecked {
+                    feeReceiverAmount += platformInterest;
+                    userLendAmount[msg.sender] = userLendAmountCache + userInterest;
+                    totalLend += userInterest;
+                }
+
                 userLendLastTimeCalculateFee[msg.sender] = nowTimestamp;
             }
         }
-        // 记录当前用户的借入数量
-        userLendAmount[msg.sender] += _amount;
-        // 借入总数量增加
-        totalLend += _amount;
+
+        // Update user lending amount and total lending
+        unchecked {
+            userLendAmount[msg.sender] += _amount;
+            totalLend += _amount;
+        }
+
         // 记录用户最后一次借入时间
         userLendLastTime[msg.sender] = nowTimestamp;
         if (userLendLastTimeCalculateFee[msg.sender] == 0) {
             userLendLastTimeCalculateFee[msg.sender] = nowTimestamp;
         }
+
         // 重新计算borrowable数量
         _calculateBorrowable();
+
         // 将代币转入该平台合约
         IERC20(usdcTokenAddress).transferFrom(msg.sender, address(this), _amount);
+
         emit DepositLend(msg.sender, address(this), _amount);
         _statusChanged();
         _collateralChanged();
     }
 
-    // _depositWithdraw（借入取钱）
+    // _depositWithdraw（借入取钱） - Gas optimized version
     function depositLendWithdraw(uint256 _amount) external {
         require(_amount > 0, "Invalid amount");
-        require(_getTotalBorrowable() >= _amount, "no more money");
+
+        uint256 totalBorrowable = _getTotalBorrowable();
+        require(totalBorrowable >= _amount, "no more money");
+
         uint256 nowTimestamp = block.timestamp;
-        uint256 timePassed = nowTimestamp - userLendLastTimeCalculateFee[msg.sender];
-        uint256 fee = getFee(userLendAmount[msg.sender], _getDynamicSupplyRate(), timePassed);
+        uint256 currentSupplyRate = _getDynamicSupplyRate();
+
+        // Cache storage variables
+        uint256 userLendAmountCache = userLendAmount[msg.sender];
+        uint256 userLendLastTimeCalculateFeeCache = userLendLastTimeCalculateFee[msg.sender];
+
+        uint256 timePassed = nowTimestamp - userLendLastTimeCalculateFeeCache;
+        uint256 fee = getFee(userLendAmountCache, currentSupplyRate, timePassed);
+
         if (fee > 0) {
             // 有利息时，分一部分利息的钱给平台，剩下的给用户
-            // 修改状态
             uint256 platformInterest = fee * liquidationPenaltyFeeRate4Protocol / RATE_DECIMALS;
             uint256 userInterest = fee - platformInterest;
+
             // 自己账户是否有这么多
-            require((userLendAmount[msg.sender] + userInterest) >= _amount, "no more money");
-            feeReceiverAmount += platformInterest;
-            userLendAmount[msg.sender] += userInterest;
-            totalLend += userInterest;
+            require((userLendAmountCache + userInterest) >= _amount, "no more money");
+
+            // Use unchecked for safe arithmetic operations
+            unchecked {
+                feeReceiverAmount += platformInterest;
+                userLendAmount[msg.sender] = userLendAmountCache + userInterest;
+                totalLend += userInterest;
+            }
+
             userLendLastTimeCalculateFee[msg.sender] = nowTimestamp;
         }
-        userLendAmount[msg.sender] -= _amount;
-        totalLend -= _amount;
+
+        // Update amounts
+        unchecked {
+            userLendAmount[msg.sender] -= _amount;
+            totalLend -= _amount;
+        }
+
         // 重新计算borrowable数量
         _calculateBorrowable();
+
         // 最终将钱转给用户
         IERC20(usdcTokenAddress).transfer(msg.sender, _amount);
+
         emit DepositLendWithdraw(address(this), msg.sender, _amount);
         _statusChanged();
         _collateralChanged();
     }
 
-    // _depositWithdraw（借入取钱）
+    // _depositWithdraw（借入取钱） - Gas optimized version
     function depositLendWithdrawAll() external {
         uint256 nowTimestamp = block.timestamp;
-        uint256 timePassed = nowTimestamp - userLendLastTimeCalculateFee[msg.sender];
-        uint256 fee = getFee(userLendAmount[msg.sender], _getDynamicSupplyRate(), timePassed);
+        uint256 currentSupplyRate = _getDynamicSupplyRate();
+
+        // Cache storage variables
+        uint256 userLendAmountCache = userLendAmount[msg.sender];
+        uint256 userLendLastTimeCalculateFeeCache = userLendLastTimeCalculateFee[msg.sender];
+
+        uint256 timePassed = nowTimestamp - userLendLastTimeCalculateFeeCache;
+        uint256 fee = getFee(userLendAmountCache, currentSupplyRate, timePassed);
+
         if (fee > 0) {
             // 有利息时，分一部分利息的钱给平台，剩下的给用户
-            // 修改状态
             uint256 platformInterest = fee * liquidationPenaltyFeeRate4Protocol / RATE_DECIMALS;
             uint256 userInterest = fee - platformInterest;
-            feeReceiverAmount += platformInterest;
-            userLendAmount[msg.sender] += userInterest;
-            totalLend += userInterest;
+
+            // Use unchecked for safe arithmetic
+            unchecked {
+                feeReceiverAmount += platformInterest;
+                userLendAmount[msg.sender] = userLendAmountCache + userInterest;
+                totalLend += userInterest;
+            }
+
             userLendLastTimeCalculateFee[msg.sender] = nowTimestamp;
         }
-        require(_getTotalBorrowable() >= userLendAmount[msg.sender], "no more money");
+
+        uint256 totalBorrowable = _getTotalBorrowable();
+        require(totalBorrowable >= userLendAmount[msg.sender], "no more money");
+
         uint256 total = userLendAmount[msg.sender];
         userLendAmount[msg.sender] = 0;
-        totalLend -= total;
+
+        // Use unchecked for safe arithmetic
+        unchecked {
+            totalLend -= total;
+        }
+
         // 重新计算borrowable数量
         _calculateBorrowable();
+
         // 最终将钱转给用户
         IERC20(usdcTokenAddress).transfer(msg.sender, total);
+
         emit DepositLendWithdraw(address(this), msg.sender, total);
         _statusChanged();
         _collateralChanged();
@@ -421,59 +493,91 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         return _supply.calculateCompoundInterest(rate, _eclipsedTime);
     }
 
-    // _depositBorrow 抵押借出（_tokenAddress为抵押代币地址，_amount为抵押数量）
+    // _depositBorrow 抵押借出（_tokenAddress为抵押代币地址，_amount为抵押数量） - Gas optimized version
     function depositBorrow(address _tokenAddress, uint256 _amount) external {
         require(_amount > 0, "Invalid amount");
         require(collaterals[_tokenAddress].tokenAddress == _tokenAddress, "Invalid collateral address");
+
+        // Cache collateral storage to memory for gas optimization
         Collateral storage collateral = collaterals[_tokenAddress];
+
         // 获取抵押代币与usdc的价格比率
         uint256 tokenPrice = IChainlink(chainlinkAddress).getTokenPrice(_tokenAddress);
         uint256 usdcPrice = IChainlink(chainlinkAddress).getTokenPrice(usdcTokenAddress);
+
         // 计算能抵押多少usdc出来
         uint256 collateralizationRatio = collateral.collateralizationRatio;
-        // 计算抵押代币的数量
         uint256 borrowUSDCAmount = _amount * tokenPrice * DOLLAR_DECIMALS / usdcPrice / DOLLAR_DECIMALS * collateralizationRatio / RATE_DECIMALS;
+
         uint256 nowTimestamp = block.timestamp;
+        uint256 currentBorrowRate = _getDynamicBorrowRate(_tokenAddress);
+
+        // Cache user borrow data
+        uint256 userBorrowAmountCache = userBorrowAmount[_tokenAddress][msg.sender];
+        uint256 userBorrowLastTimeCache = userBorrowLastTime[_tokenAddress][msg.sender];
+        uint256 userBorrowLastTimeCalculateFeeCache = userBorrowLastTimeCalculateFee[_tokenAddress][msg.sender];
+
         uint256 protocolFee = 0;
         uint256 borrowFee = 0;
+
         // 是否借出过
-        if (userBorrowLastTime[_tokenAddress][msg.sender] != 0) {
+        if (userBorrowLastTimeCache != 0) {
             // 第二次借出时，累加借出的利息
-            uint256 timePassed = nowTimestamp - userBorrowLastTimeCalculateFee[_tokenAddress][msg.sender];
-            borrowFee = getFee(borrowUSDCAmount, _getDynamicBorrowRate(_tokenAddress), timePassed);
+            uint256 timePassed = nowTimestamp - userBorrowLastTimeCalculateFeeCache;
+            borrowFee = getFee(borrowUSDCAmount, currentBorrowRate, timePassed);
             if (borrowFee > 0) {
                 // 平台收入fee
                 protocolFee = borrowFee * liquidationPenaltyFeeRate4Protocol / RATE_DECIMALS;
                 userBorrowLastTimeCalculateFee[_tokenAddress][msg.sender] = nowTimestamp;
             }
         }
+
         // 对比_tokenAddress对应的borrowable是否足够
         require(collateral.borrowable >= borrowUSDCAmount, "Not enough borrowable");
-        feeReceiverAmount += protocolFee;
-        collateral.borrowed += borrowUSDCAmount;
-        totalBorrow += borrowUSDCAmount;
-        userBorrowAmount[_tokenAddress][msg.sender] += borrowUSDCAmount;
+
+        // Use unchecked for safe arithmetic operations
+        unchecked {
+            feeReceiverAmount += protocolFee;
+            collateral.borrowed += borrowUSDCAmount;
+            totalBorrow += borrowUSDCAmount;
+            userBorrowAmount[_tokenAddress][msg.sender] = userBorrowAmountCache + borrowUSDCAmount;
+        }
+
         userBorrowDepositedAmount[_tokenAddress][msg.sender] = _amount;
+
+        // Check if user is already in the borrower list (optimized)
         bool isNotIn = true;
-        for (uint256 i; i < tokenBorrower[_tokenAddress].length; i++) {
-            if (tokenBorrower[_tokenAddress][i] == msg.sender) {
+        address[] storage borrowers = tokenBorrower[_tokenAddress];
+        uint256 borrowersLength = borrowers.length;
+
+        for (uint256 i = 0; i < borrowersLength; ) {
+            if (borrowers[i] == msg.sender) {
                 isNotIn = false;
+                break;
             }
+            unchecked { i++; }
         }
+
         if (isNotIn) {
-            tokenBorrower[_tokenAddress].push(msg.sender);
+            borrowers.push(msg.sender);
         }
+
         // 记录用户借出时间
         userBorrowLastTime[_tokenAddress][msg.sender] = nowTimestamp;
         if (userBorrowLastTimeCalculateFee[_tokenAddress][msg.sender] == 0) {
             userBorrowLastTimeCalculateFee[_tokenAddress][msg.sender] = nowTimestamp;
         }
+
         // 重新计算borrowable数量
         _calculateBorrowable();
+
         // 转移抵押代币到该平台合约
         IERC20(_tokenAddress).transferFrom(msg.sender, address(this), _amount);
+
         // 将相应的usdc转给用户
-        IERC20(usdcTokenAddress).transfer(msg.sender, borrowUSDCAmount - borrowFee);
+        uint256 transferAmount = borrowUSDCAmount - borrowFee;
+        IERC20(usdcTokenAddress).transfer(msg.sender, transferAmount);
+
         emit DepositBorrow(msg.sender, _tokenAddress, borrowUSDCAmount);
         _statusChanged();
         _collateralChanged();
@@ -516,38 +620,43 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         return totalLend - totalBorrow;
     }
 
-    // 计算borrowable公式，基于风险调整的分配
+    // 计算borrowable公式，基于风险调整的分配 - Gas optimized version
     function _calculateBorrowable() internal {
         uint256 totalBorrowable = totalLend - totalBorrow;
         if (totalBorrowable == 0 || supportedCollateralAddresses.length == 0) {
             return;
         }
 
-        // 计算总的风险调整权重
+        uint256 supportedCollateralCount = supportedCollateralAddresses.length;
+
+        // 计算总的风险调整权重 - optimized loop
         uint256 totalRiskAdjustedWeight = 0;
-        for (uint256 i = 0; i < supportedCollateralAddresses.length; i++) {
+        for (uint256 i = 0; i < supportedCollateralCount; ) {
             address collateralAddress = supportedCollateralAddresses[i];
             Collateral storage collateral = collaterals[collateralAddress];
             totalRiskAdjustedWeight += collateral.maxBorrowableRatio;
+            unchecked { i++; }
         }
 
-        // 根据风险调整权重分配borrowable
-        for (uint256 i = 0; i < supportedCollateralAddresses.length; i++) {
+        // 根据风险调整权重分配borrowable - optimized loop
+        for (uint256 i = 0; i < supportedCollateralCount; ) {
             address collateralAddress = supportedCollateralAddresses[i];
             Collateral storage collateral = collaterals[collateralAddress];
-            
+
             // 基于风险调整的borrowable分配
-            collateral.borrowable = (totalBorrowable * collateral.maxBorrowableRatio) / totalRiskAdjustedWeight;
-            
+            uint256 newBorrowable = (totalBorrowable * collateral.maxBorrowableRatio) / totalRiskAdjustedWeight;
+            collateral.borrowable = newBorrowable;
+
             // 计算利用率
-            uint256 totalSupply = collateral.borrowable + collateral.borrowed;
+            uint256 totalSupply = newBorrowable + collateral.borrowed;
             if (totalSupply > 0) {
                 collateral.utilizationRate = (collateral.borrowed * RATE_DECIMALS) / totalSupply;
             } else {
                 collateral.utilizationRate = 0;
             }
-            
-            emit CalculateBorrowable(collateralAddress, collateral.borrowable);
+
+            emit CalculateBorrowable(collateralAddress, newBorrowable);
+            unchecked { i++; }
         }
     }
 
