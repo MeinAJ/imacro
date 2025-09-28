@@ -101,5 +101,3 @@ AAVE是以ETH作为计价单位，而compound则是以USD作为计价单位。
     - 投资回报率=+50%
       因此，你的无常损失是30,000 - 28,284=1,716 DAI
 - 类似的swap，比如sushiswap（多种链）、pancakeswap（Binace链）、TerraSwap（Terra链）
-- 
-- 
