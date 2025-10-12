@@ -74,8 +74,6 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint256 healthFactor; // 健康因子
         uint256 liquidationThreshold; // 清算阈值
         uint256 collateralizationRatio; // 抵押率
-        uint256 riskFactor; // 风险值（6位精度）
-        uint256 maxBorrowableRatio; // 最大可借比例（基于风险调整）
     }
 
     event DepositLend(address indexed user, address pool, uint256 amount);
@@ -105,7 +103,12 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     ) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
-        _inner_initialize(_feeReceiver, _aaveTokenAddress, _usdcTokenAddress, _chainlinkAddress);
+        _inner_initialize(
+            _feeReceiver,
+            _aaveTokenAddress,
+            _usdcTokenAddress,
+            _chainlinkAddress
+        );
     }
 
     function _inner_initialize(
@@ -155,14 +158,11 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         address _tokenAddress, 
         uint256 _healthFactor, 
         uint256 _liquidationThreshold, 
-        uint256 _collateralizationRate,
-        uint256 _riskFactor
+        uint256 _collateralizationRate
     ) external onlyOwner {
         require(_tokenAddress != address(0), "Invalid token address");
         require(collaterals[_tokenAddress].tokenAddress == address(0), "Collateral already exists");
-        require(_riskFactor <= RATE_DECIMALS, "Risk factor cannot exceed 100%");
-        
-        uint256 maxBorrowableRatio = DynamicInterestRateCalculator.calculateCollateralizationAdjustment(_riskFactor);
+
         collaterals[_tokenAddress] = Collateral(
             _tokenAddress, 
             0, 
@@ -170,22 +170,9 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             0, 
             _healthFactor, 
             _liquidationThreshold, 
-            _collateralizationRate,
-            _riskFactor,
-            maxBorrowableRatio
+            _collateralizationRate
         );
         supportedCollateralAddresses.push(_tokenAddress);
-    }
-
-    function updateCollateralRisk(address _tokenAddress, uint256 _riskFactor) external onlyOwner {
-        require(collaterals[_tokenAddress].tokenAddress == _tokenAddress, "Collateral does not exist");
-        require(_riskFactor <= RATE_DECIMALS, "Risk factor cannot exceed 100%");
-        
-        collaterals[_tokenAddress].riskFactor = _riskFactor;
-        collaterals[_tokenAddress].maxBorrowableRatio = DynamicInterestRateCalculator.calculateCollateralizationAdjustment(_riskFactor);
-        
-        // Recalculate borrowable amounts after risk update
-        _calculateBorrowable();
     }
 
     function setReserveFactor(uint256 _reserveFactor) external onlyOwner {
@@ -254,8 +241,8 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // 当借出钱时，实时计算动态利率
     function _getDynamicBorrowRate(address _tokenAddress) internal view returns (uint256) {
         require(collaterals[_tokenAddress].tokenAddress == _tokenAddress, "Invalid collateral address");
-        uint256 dynamicUtilizationRate = collaterals[_tokenAddress].utilizationRate;
-        return DynamicInterestRateCalculator.calculateBorrowRate(dynamicUtilizationRate);
+        uint256 borrowUtilizationRate = collaterals[_tokenAddress].utilizationRate;
+        return DynamicInterestRateCalculator.calculateBorrowRate(borrowUtilizationRate);
     }
 
     // 计算存款利率
@@ -620,43 +607,15 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         return totalLend - totalBorrow;
     }
 
-    // 计算borrowable公式，基于风险调整的分配 - Gas optimized version
+    // 计算borrowable公式，平分给各个代币的borrowable
     function _calculateBorrowable() internal {
         uint256 totalBorrowable = totalLend - totalBorrow;
         if (totalBorrowable == 0 || supportedCollateralAddresses.length == 0) {
             return;
         }
-
-        uint256 supportedCollateralCount = supportedCollateralAddresses.length;
-
-        // 计算总的风险调整权重 - optimized loop
-        uint256 totalRiskAdjustedWeight = 0;
-        for (uint256 i = 0; i < supportedCollateralCount; ) {
-            address collateralAddress = supportedCollateralAddresses[i];
-            Collateral storage collateral = collaterals[collateralAddress];
-            totalRiskAdjustedWeight += collateral.maxBorrowableRatio;
-            unchecked { i++; }
-        }
-
-        // 根据风险调整权重分配borrowable - optimized loop
-        for (uint256 i = 0; i < supportedCollateralCount; ) {
-            address collateralAddress = supportedCollateralAddresses[i];
-            Collateral storage collateral = collaterals[collateralAddress];
-
-            // 基于风险调整的borrowable分配
-            uint256 newBorrowable = (totalBorrowable * collateral.maxBorrowableRatio) / totalRiskAdjustedWeight;
-            collateral.borrowable = newBorrowable;
-
-            // 计算利用率
-            uint256 totalSupply = newBorrowable + collateral.borrowed;
-            if (totalSupply > 0) {
-                collateral.utilizationRate = (collateral.borrowed * RATE_DECIMALS) / totalSupply;
-            } else {
-                collateral.utilizationRate = 0;
-            }
-
-            emit CalculateBorrowable(collateralAddress, newBorrowable);
-            unchecked { i++; }
+        uint256 borrowablePerToken = totalBorrowable / supportedCollateralAddresses.length;
+        for (uint256 i = 0; i < supportedCollateralAddresses.length; i++) {
+            collaterals[supportedCollateralAddresses[i]].borrowable = borrowablePerToken;
         }
     }
 

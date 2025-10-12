@@ -14,53 +14,6 @@ library DynamicInterestRateCalculator {
     uint256 public constant SLOPE2 = 600000; // 60% 第二段斜率
 
     /**
-     * @dev 计算每日复利的利息
-     * @param _amount 本金金额（18位精度）
-     * @param _interestRate 年化利率（6位精度，如10% = 100000）
-     * @param _elapsedTime 经过的时间（秒）
-     * @return 利息金额（18位精度）
-     */
-    function calculateCompoundInterest(
-        uint256 _amount,
-        uint256 _interestRate,
-        uint256 _elapsedTime
-    ) internal pure returns (uint256) {
-        if (_elapsedTime == 0 || _amount == 0 || _interestRate == 0) {
-            return 0;
-        }
-
-        // 计算天数（向下取整）
-        uint256 daysCount = _elapsedTime / SECONDS_PER_DAY;
-
-        if (daysCount == 0) {
-            return 0;
-        }
-
-        // 计算日利率（18位精度）
-        uint256 dailyRate = (_interestRate * PRECISION) / (365 * RATE_PRECISION);
-
-        // 使用更高效的复利计算方法
-        uint256 factor = PRECISION;
-        uint256 tempDays = daysCount;
-        uint256 tempRate = PRECISION + dailyRate;
-
-        // 使用快速幂算法计算复利
-        while (tempDays > 0) {
-            if (tempDays & 1 == 1) {
-                factor = (factor * tempRate) / PRECISION;
-            }
-            tempRate = (tempRate * tempRate) / PRECISION;
-            tempDays >>= 1;
-        }
-
-        // 计算总金额：_amount * factor / PRECISION
-        uint256 totalAmount = (_amount * factor) / PRECISION;
-
-        // 返回利息部分
-        return totalAmount - _amount;
-    }
-
-    /**
      * @dev 根据利用率计算动态借贷利率（双线模型）
      * @param _utilizationRate 利用率（6位精度）
      * @return 年化利率（6位精度）
