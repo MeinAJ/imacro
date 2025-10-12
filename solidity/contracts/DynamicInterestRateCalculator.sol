@@ -89,9 +89,10 @@ library DynamicInterestRateCalculator {
         uint256 _borrowRate,
         uint256 _reserveFactor
     ) internal pure returns (uint256) {
-        // 存款利率 = 利用率 * 借贷利率 * (1 - 储备金因子)
-        uint256 rateToPool = (_borrowRate * (RATE_PRECISION - _reserveFactor)) / RATE_PRECISION;
-        return (_utilizationRate * rateToPool) / RATE_PRECISION;
+        // 存款利率 = (借款利率 × 利用率) × (1 - 储备金因子)
+        return ((_borrowRate * _utilizationRate) / RATE_PRECISION)
+            * (RATE_PRECISION - _reserveFactor)
+            / RATE_PRECISION;
     }
 
 }
