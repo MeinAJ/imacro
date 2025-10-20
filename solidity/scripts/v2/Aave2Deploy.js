@@ -28,6 +28,11 @@ async function main() {
         const USDCToken = await usdcDebtToken.connect(deployer1).deploy("USDC Token", "USDC");
         await waitForTransaction(USDCToken.deploymentTransaction());
 
+        // 部署cUSDC代币合约
+        const cUsdcDebtToken = await ethers.getContractFactory("Token");
+        const cUSDCToken = await cUsdcDebtToken.connect(deployer1).deploy("cUSDC Token", "cUSDC");
+        await waitForTransaction(cUSDCToken.deploymentTransaction());
+
         // mint USDC
         const mintTx1 = await USDCToken.mint(deployer2.address, BigInt(1000000000000000000 * 100000000));
         await waitForTransaction(mintTx1);
@@ -67,6 +72,7 @@ async function main() {
                 deployer1.address,
                 await AaveToken.getAddress(),
                 await USDCToken.getAddress(),
+                await cUSDCToken.getAddress(),
                 await Chainlink.getAddress()
             ],
             {

@@ -25,7 +25,7 @@ SEPOLIA_PK_THREE = "0x4c42dcc67be02d2c1c44d50c3064394f1db90ef56936ab30b6cb21ff3d
 
 ### [编写通用代币合约](solidity/contracts/Token.sol)
 
-### [编写部署AAVE代币、USDC代币、TOSHI代币、DEGEN代币；](solidity/scripts/v2/Aave2Deploy.js)
+### [编写部署AAVE代币、USDC代币、TOSHI代币、DEGEN代币；](solidity/scripts/v1/Aave2Deploy.js)
 
 ### 找不到hardhat模块时
 ```
@@ -53,4 +53,4 @@ npx hardhat clean
 npx hardhat compile --force
 ```
 
-### [计算event的topic](solidity/scripts/v2/CalculateEventTopic.js)计算event的topic
+### [计算event的topic](solidity/scripts/v1/CalculateEventTopic.js)计算event的topic

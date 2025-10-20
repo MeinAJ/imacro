@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import {IChainlink} from "./IChainlink.sol";
-import {DynamicInterestRateCalculator} from "./DynamicInterestRateCalculator.sol";
+import {IChainlink} from "../IChainlink.sol";
+import {DynamicInterestRateCalculator} from "../DynamicInterestRateCalculator.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -28,6 +28,8 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     uint256 public borrowIndex;         // 借款指数 (初始 1e27)
     uint256 public lastUpdateTimestamp; // 最后更新时间
 
+    uint256 public safeHealthFactor; // 安全健康系数，默认1.2，1200000 (6位精度)
+
     address public aaveTokenAddress;
     address public usdcTokenAddress;
     address public cUsdcTokenAddress;
@@ -45,6 +47,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     mapping(address => LendRecord[]) public userLendAmount;
 
     // 用户借款记录
+    mapping(address => mapping(address => uint256)) public userDepositTokenAmount;
     mapping(address => mapping(address => BorrowRecord[])) public userBorrowAmount;
     mapping(address => address[]) public tokenBorrower;
 
@@ -67,15 +70,16 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         address tokenAddress;
         uint256 totalCollateral;      // 总抵押数量
         uint256 totalBorrowPrincipal; // 该抵押物的总借款本金
-        uint256 healthFactor;
         uint256 liquidationThreshold;
         uint256 collateralizationRatio;
     }
 
     event LendDeposited(address indexed user, uint256 amount, uint256 liquidityIndex);
-    event LendWithdrawn(address indexed user, uint256 amount, uint256 interest);
-    event BorrowDeposited(address indexed user, address indexed collateralToken, uint256 collateralAmount, uint256 borrowAmount);
-    event BorrowRepaid(address indexed user, address indexed collateralToken, uint256 repayAmount, uint256 collateralReleased);
+    event LendWithdraw(address indexed user, uint256 amount, uint256 interest);
+    event DepositCollateral(address indexed user, address indexed collateralToken, uint256 collateralAmount);
+    event DepositCollateralWithdraw(address indexed user, address indexed collateralToken, uint256 collateralAmount);
+    event BorrowDeposited(address indexed user, address indexed collateralToken, uint256 borrowAmount);
+    event BorrowRepay(address indexed user, address indexed collateralToken, uint256 repayAmount);
     event Liquidated(address indexed borrower, address indexed liquidator, address collateralToken, uint256 liquidatedAmount, uint256 collateralSeized);
 
     function initialize(
@@ -270,6 +274,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function depositLend(uint256 _amount) external {
         require(_amount > 0, "Amount must be greater than 0");
 
+        // 更新指数
         updateIndexes();
 
         // 转移USDC到合约
@@ -294,6 +299,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function depositLendWithdraw(uint256 _amount) external {
         require(_amount > 0, "Amount must be greater than 0");
 
+        // 更新指数
         updateIndexes();
 
         uint256 userTotalWithInterest = calculateUserLendTotal(msg.sender);
@@ -336,89 +342,172 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         // 转移资金给用户
         IERC20(usdcTokenAddress).safeTransfer(msg.sender, _amount);
 
-        emit LendWithdrawn(msg.sender, _amount, interestEarned);
+        emit LendWithdraw(msg.sender, _amount, interestEarned);
+    }
+
+    /**
+     * @dev 抵押
+     * _tokenAddress 抵押物代币地址
+     * _tokenAmount 抵押物数量
+     */
+    function depositCollateral(address _tokenAddress, uint256 _tokenAmount) external {
+        require(_tokenAmount > 0, "Amount must be greater than 0");
+        require(collaterals[_tokenAddress].tokenAddress != address(0), "Collateral not supported");
+
+        // 更新指数
+        updateIndexes();
+
+        // 转移抵押代币到合约
+        IERC20(_tokenAddress).safeTransferFrom(msg.sender, address(this), _tokenAmount);
+
+        // 更新抵押物信息
+        collaterals[_tokenAddress].totalCollateral += _tokenAmount;
+        userDepositTokenAmount[_tokenAddress][msg.sender] += _tokenAmount;
+
+        emit DepositCollateral(msg.sender, _tokenAddress, _tokenAmount);
+    }
+
+    /**
+     * @dev 抵押撤回
+     * _tokenAddress 抵押物代币地址
+     * _withdrawPercentage 抵押物百分比
+     */
+    function depositCollateralWithdraw(address _tokenAddress, uint256 _withdrawPercentage) external {
+        require(_withdrawPercentage <= RATE_DECIMALS, "Percentage too high");
+        require(collaterals[_tokenAddress].tokenAddress != address(0), "Collateral not supported");
+
+        // 更新指数
+        updateIndexes();
+
+        Collateral storage collateral = collaterals[_tokenAddress];
+        // 总已借USDC数量（包含利息）
+        uint256 totalBorrowedWithInterest = calculateUserBorrowTotal(msg.sender, _tokenAddress);
+        // 总可借USDC数量
+        uint256 maxBorrowUSDCAmount = _getCollateralValue(
+            _tokenAddress,
+            userDepositTokenAmount[_tokenAddress][msg.sender],
+            RATE_DECIMALS
+        ) * collateral.collateralizationRatio / RATE_DECIMALS;
+        // 可撤回的USDC价值数量
+        uint256 withdrawAmount =(maxBorrowUSDCAmount - totalBorrowedWithInterest) * _withdrawPercentage / RATE_DECIMALS;
+        // 计算需要撤回的数量
+        uint256 tokenPrice = IChainlink(chainlinkAddress).getTokenPrice(_tokenAddress);
+        uint256 usdcPrice = IChainlink(chainlinkAddress).getTokenPrice(usdcTokenAddress);
+        uint256 withdrawTokenAmount = withdrawAmount * usdcPrice * DOLLAR_DECIMALS / tokenPrice;
+
+        // 更新抵押数量
+        userDepositTokenAmount[_tokenAddress][msg.sender] -= withdrawTokenAmount;
+        collateral.totalCollateral -= withdrawTokenAmount;
+
+        // 将抵押物转移回用户
+        IERC20(_tokenAddress).safeTransfer(msg.sender, withdrawTokenAmount);
+
+        emit DepositCollateralWithdraw(msg.sender, _tokenAddress, withdrawTokenAmount);
     }
 
     /**
      * @dev 抵押借款
+     * _tokenAddress 抵押物代币地址
+     * _borrowPercentage 借款比例 (100% = 1e6)
      */
-    function depositBorrow(address _tokenAddress, uint256 _amount) external {
-        require(_amount > 0, "Amount must be greater than 0");
+    function borrow(address _tokenAddress, uint256 _borrowPercentage) external {
         require(collaterals[_tokenAddress].tokenAddress != address(0), "Collateral not supported");
+        require(_borrowPercentage <= 1e6, "Borrow percentage too high");
+        require(userDepositTokenAmount[_tokenAddress][msg.sender] > 0, "No collateral deposited");
 
+        // 更新指数
         updateIndexes();
 
+        // 先计算还可以借款多少usdc
         Collateral storage collateral = collaterals[_tokenAddress];
+        uint256 totalTokenAmount = userDepositTokenAmount[_tokenAddress][msg.sender];
+        uint256 maxBorrowUSDCAmount = _getCollateralValue(_tokenAddress, totalTokenAmount, RATE_DECIMALS) * collateral.collateralizationRatio / RATE_DECIMALS;
+        uint256 totalBorrowedWithInterest = calculateUserBorrowTotal(msg.sender, _tokenAddress);
 
-        // 转移抵押代币到合约
-        IERC20(_tokenAddress).safeTransferFrom(msg.sender, address(this), _amount);
+        // 计算还可以最多贷款多少
+        require(maxBorrowUSDCAmount >= totalBorrowedWithInterest, "Insufficient collateral value");
+        uint256 maxBorrowAmount = maxBorrowUSDCAmount - totalBorrowedWithInterest;
 
-        // 计算可借款金额 (基于抵押率和价格)
-        uint256 collateralValueInUSD = getCollateralValue(_tokenAddress, _amount);
-        uint256 maxBorrowAmount = (collateralValueInUSD * collateral.collateralizationRatio) / RATE_DECIMALS;
-
-        require(maxBorrowAmount > 0, "Insufficient collateral value");
+        // 计算借款数量
+        uint256 actualBorrowAmount = maxBorrowAmount * _borrowPercentage / RATE_DECIMALS;
+        require(actualBorrowAmount > 0, "Insufficient collateral value");
 
         // 检查合约是否有足够的流动性
         uint256 availableLiquidity = getTotalLendWithInterest() - getTotalBorrowWithInterest();
-        require(availableLiquidity >= maxBorrowAmount, "Insufficient liquidity");
+        require(availableLiquidity >= actualBorrowAmount, "Insufficient liquidity");
 
         // 更新抵押物信息
-        collateral.totalCollateral += _amount;
-        collateral.totalBorrowPrincipal += maxBorrowAmount;
+        collateral.totalBorrowPrincipal += actualBorrowAmount;
 
         // 记录借款
         userBorrowAmount[_tokenAddress][msg.sender].push(BorrowRecord({
-            principalAmount: maxBorrowAmount,
+            principalAmount: actualBorrowAmount,
             borrowIndexSnapshot: borrowIndex,
             timestamp: block.timestamp
         }));
 
         // 更新借款本金总额
-        totalPrincipalBorrow += maxBorrowAmount;
+        totalPrincipalBorrow += actualBorrowAmount;
 
         // 添加借款人到列表
         _addBorrowerToToken(_tokenAddress, msg.sender);
 
         // 转移借款给用户
-        IERC20(usdcTokenAddress).safeTransfer(msg.sender, maxBorrowAmount);
+        IERC20(usdcTokenAddress).safeTransfer(msg.sender, actualBorrowAmount);
 
-        emit BorrowDeposited(msg.sender, _tokenAddress, _amount, maxBorrowAmount);
+        emit BorrowDeposited(msg.sender, _tokenAddress, actualBorrowAmount);
     }
 
     /**
-     * @dev 偿还借款
+     * @dev 抵押借款后还钱
+     * _tokenAddress 抵押物代币地址
+     * repayPercentage 还款百分比 (100% = 1e6)
      */
-    function depositBorrowWithdraw(address _tokenAddress) external {
+    function borrowRepay(address _tokenAddress, uint256 repayPercentage) external {
         require(collaterals[_tokenAddress].tokenAddress != address(0), "Collateral not supported");
+        require(userBorrowAmount[_tokenAddress][msg.sender].length > 0, "No borrowed");
 
+        // 更新指数
         updateIndexes();
 
         uint256 totalBorrowAmountWithInterest = calculateUserBorrowTotal(msg.sender, _tokenAddress);
         require(totalBorrowAmountWithInterest > 0, "No borrow to repay");
-
-        // 计算借款本金总额
-        uint256 totalBorrowPrincipal = _calculateUserBorrowPrincipal(_tokenAddress, msg.sender);
+        uint256 actualReplayAmount = totalBorrowAmountWithInterest * repayPercentage / RATE_DECIMALS;
 
         // 转移还款资金
-        IERC20(usdcTokenAddress).safeTransferFrom(msg.sender, address(this), totalBorrowAmountWithInterest);
+        IERC20(usdcTokenAddress).safeTransferFrom(msg.sender, address(this), actualReplayAmount);
+        // 返回抵押物
+        uint256 tokenPrice = IChainlink(chainlinkAddress).getTokenPrice(_tokenAddress);
+        uint256 usdcPrice = IChainlink(chainlinkAddress).getTokenPrice(usdcTokenAddress);
+        uint256 withdrawTokenAmount = actualReplayAmount * usdcPrice * DOLLAR_DECIMALS / tokenPrice;
+        IERC20(_tokenAddress).safeTransfer(msg.sender, withdrawTokenAmount);
 
-        // 计算抵押物释放比例
-        Collateral storage collateral = collaterals[_tokenAddress];
-        uint256 collateralToRelease = (collateral.totalCollateral * totalBorrowPrincipal) / collateral.totalBorrowPrincipal;
+        // 更新用户抵押物数量
+        userDepositTokenAmount[_tokenAddress][msg.sender] += withdrawTokenAmount;
+        // 更新总抵押物数量
+        collaterals[_tokenAddress].totalCollateral -= actualReplayAmount;
+        // 更新借款本金
+        BorrowRecord[] storage records = userBorrowAmount[_tokenAddress][msg.sender];
 
-        // 更新借款记录
-        delete userBorrowAmount[_tokenAddress][msg.sender];
-
-        // 更新总额
-        totalPrincipalBorrow -= totalBorrowPrincipal;
-        collateral.totalBorrowPrincipal -= totalBorrowPrincipal;
-        collateral.totalCollateral -= collateralToRelease;
-
-        // 转移抵押物回用户
-        IERC20(_tokenAddress).safeTransfer(msg.sender, collateralToRelease);
-
-        emit BorrowRepaid(msg.sender, _tokenAddress, totalBorrowAmountWithInterest, collateralToRelease);
+        uint256 remaining = actualReplayAmount;
+        for (int256 i = int256(records.length) - 1; i >= 0 && remaining > 0; i--) {
+            // 计算每个借款记录的本金+利息
+            BorrowRecord storage record = records[uint256(i)];
+            uint256 principalWithInterest = (record.principalAmount * borrowIndex) / record.borrowIndexSnapshot;
+            if (principalWithInterest <= remaining) {
+                // 这个记录可以全部还清
+                remaining -= principalWithInterest;
+                // 删除记录
+                records[uint256(i)] = records[records.length - 1];
+                records.pop();
+            } else {
+                // 这个记录部分还清
+                uint256 principalPart = (remaining * record.borrowIndexSnapshot) / borrowIndex;
+                record.principalAmount -= principalPart;
+                remaining = 0;
+            }
+        }
+        emit BorrowRepay(msg.sender, _tokenAddress, actualReplayAmount);
     }
 
     // ========== 辅助函数 ==========
@@ -440,9 +529,11 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         }
     }
 
-    function getCollateralValue(address tokenAddress, uint256 amount) internal view returns (uint256) {
+    function _getCollateralValue(address tokenAddress, uint256 _amount, uint256 borrowPercentage) internal view returns (uint256) {
         // 简化实现 - 实际应该从Chainlink获取价格
-        return amount; // 假设1:1价格
+        uint256 tokenPrice = IChainlink(chainlinkAddress).getTokenPrice(tokenAddress);
+        uint256 usdcPrice = IChainlink(usdcTokenAddress).getTokenPrice(usdcTokenAddress);
+        return _amount * tokenPrice * DOLLAR_DECIMALS / usdcPrice / DOLLAR_DECIMALS * borrowPercentage / RATE_DECIMALS;
     }
 
     // ========== 清算相关函数 ==========
@@ -454,8 +545,8 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint256 _liquidationPenaltyFeeRate4Cleaner,
         uint256 _closeFactor
     ) external onlyOwner {
-        require(_liquidationPenaltyFeeRate4Cleaner <= 20000, "Penalty too high"); // 最大20%
-        require(_closeFactor > 0 && _closeFactor <= RATE_DECIMALS, "Invalid close factor");
+        require(_liquidationPenaltyFeeRate4Cleaner <= 200000, "Penalty too high"); // 最大20%清算奖励（惩罚率）
+        require(_liquidationPenaltyFeeRate4Cleaner <= 250000, "Invalid close factor"); // 最大25%清算比例
 
         liquidationPenaltyFeeRate4Cleaner = _liquidationPenaltyFeeRate4Cleaner;
         closeFactor = _closeFactor;
@@ -470,10 +561,10 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         address user,
         address collateralToken
     ) public view returns (uint256) {
-        uint256 totalDebtValue = calculateUserTotalDebtValue(user);
+        uint256 totalDebtValue = calculateUserTotalDebtValue(collateralToken, user);
         if (totalDebtValue == 0) return type(uint256).max;
 
-        uint256 collateralValue = calculateUserTotalCollateralValue(user);
+        uint256 collateralValue = calculateUserTotalCollateralValue(collateralToken, user);
         Collateral memory collateralConfig = collaterals[collateralToken];
         uint256 liquidationThresholdValue = (collateralValue * collateralConfig.liquidationThreshold) / RATE_DECIMALS;
 
@@ -483,53 +574,29 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
     /**
-     * @dev 计算用户总债务价值 (所有借款的代币价值总和)
+     * @dev 计算用户总债务价值 (usdc价格)
      */
-    function calculateUserTotalDebtValue(address user) public view returns (uint256 totalDebtValue) {
-        for (uint256 i = 0; i < supportedCollateralAddresses.length; i++) {
-            address collateralToken = supportedCollateralAddresses[i];
-            uint256 borrowAmountWithInterest = calculateUserBorrowTotal(user, collateralToken);
-            if (borrowAmountWithInterest > 0) {
-                // 假设借款都是USDC，1:1价格
-                totalDebtValue += borrowAmountWithInterest;
-            }
+    function calculateUserTotalDebtValue(address collateralToken, address user) public view returns (uint256 totalDebtValue) {
+        uint256 borrowAmountWithInterest = calculateUserBorrowTotal(user, collateralToken);
+        if (borrowAmountWithInterest > 0) {
+            // 预言机获取价格
+            totalDebtValue = borrowAmountWithInterest;
         }
     }
 
     /**
-     * @dev 计算用户总抵押物价值
+     * @dev 计算用户总抵押物价值（usdc价格）
      */
-    function calculateUserTotalCollateralValue(address user) public view returns (uint256 totalCollateralValue) {
+    function calculateUserTotalCollateralValue(address collateralToken, address user) public view returns (uint256 totalCollateralValue) {
         // 这里需要实现用户抵押物记录查询
         // 简化实现：遍历所有支持的抵押物，计算用户抵押的价值
-        for (uint256 i = 0; i < supportedCollateralAddresses.length; i++) {
-            address collateralToken = supportedCollateralAddresses[i];
-            uint256 userCollateralAmount = getUserCollateralAmount(user, collateralToken);
-            if (userCollateralAmount > 0) {
-                uint256 collateralPrice = getTokenPrice(collateralToken);
-                totalCollateralValue += (userCollateralAmount * collateralPrice) / (TOKEN_DECIMALS);
-            }
+        uint256 userCollateralAmount = userDepositTokenAmount[collateralToken][user];
+        if (userCollateralAmount > 0) {
+            // 预言机获取价格
+            uint256 tokenPrice = IChainlink(chainlinkAddress).getTokenPrice(collateralToken);
+            uint256 usdcPrice = IChainlink(usdcTokenAddress).getTokenPrice(usdcTokenAddress);
+            totalCollateralValue = userCollateralAmount * tokenPrice * DOLLAR_DECIMALS / usdcPrice / DOLLAR_DECIMALS;
         }
-    }
-
-    /**
-     * @dev 获取用户特定抵押物的数量
-     */
-    function getUserCollateralAmount(address user, address collateralToken) public view returns (uint256) {
-        // 这里需要实现用户抵押物数量的查询
-        // 简化实现：假设通过用户借款记录来推算抵押物
-        BorrowRecord[] storage records = userBorrowAmount[collateralToken][user];
-        if (records.length == 0) return 0;
-
-        // 实际应该维护独立的用户抵押物记录
-        Collateral memory collateral = collaterals[collateralToken];
-        uint256 totalBorrowPrincipal = _calculateUserBorrowPrincipal(collateralToken, user);
-
-        // 根据借款本金比例估算抵押物数量
-        if (collateral.totalBorrowPrincipal > 0) {
-            return (collateral.totalCollateral * totalBorrowPrincipal) / collateral.totalBorrowPrincipal;
-        }
-        return 0;
     }
 
     /**
@@ -539,6 +606,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         require(collaterals[_tokenAddress].tokenAddress != address(0), "Collateral not supported");
 
         address[] memory borrowers = tokenBorrower[_tokenAddress];
+        Collateral storage collateral = collaterals[_tokenAddress];
         ReturnLiquidateInfo[] memory liquidatableUsers = new ReturnLiquidateInfo[](borrowers.length);
         uint256 count = 0;
 
@@ -548,11 +616,8 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
             // 健康因子 < 1 表示可被清算
             if (healthFactor < RATE_DECIMALS) {
-                uint256 totalDebtValue = calculateUserTotalDebtValue(borrower);
-                uint256 collateralValue = calculateUserTotalCollateralValue(borrower);
-                uint256 userCollateralAmount = getUserCollateralAmount(borrower, _tokenAddress);
-
-                Collateral memory collateralConfig = collaterals[_tokenAddress];
+                uint256 totalDebtValue = calculateUserTotalDebtValue(_tokenAddress, borrower);
+                uint256 userCollateralAmount = calculateUserTotalCollateralValue(_tokenAddress, borrower);
 
                 liquidatableUsers[count] = ReturnLiquidateInfo({
                     borrower: borrower,
@@ -561,7 +626,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
                     userTotal: totalDebtValue,
                     userDeposited: userCollateralAmount,
                     healthFactor: healthFactor,
-                    liquidationThreshold: collateralConfig.liquidationThreshold,
+                    liquidationThreshold: collateral.liquidationThreshold,
                     maxLiquidationAmount: calculateMaxLiquidationAmount(borrower, _tokenAddress)
                 });
                 count++;
@@ -581,27 +646,19 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
      * @dev 计算最大可清算金额
      */
     function calculateMaxLiquidationAmount(address borrower, address collateralToken) public view returns (uint256) {
-        uint256 totalDebt = calculateUserTotalDebtValue(borrower);
+        uint256 totalDebt = calculateUserTotalDebtValue(collateralToken, borrower);
         uint256 healthFactor = calculateHealthFactor(borrower, collateralToken);
 
         if (healthFactor >= RATE_DECIMALS) {
             return 0;
         }
 
-        // 计算需要偿还多少债务才能使健康因子恢复到1以上
+        // 计算需要偿还多少债务才能使健康因子恢复到1.2以上(safeHealthFactor = 1.2)
         uint256 collateralValue = calculateUserTotalCollateralValue(borrower);
-        Collateral memory collateralConfig = collaterals[collateralToken];
-        uint256 minCollateralValueRequired = (totalDebt * RATE_DECIMALS) / collateralConfig.liquidationThreshold;
+        uint256 tokenLiquidationThreshold = collaterals[collateralToken].liquidationThreshold;
 
-        if (collateralValue <= minCollateralValueRequired) {
-            return totalDebt; // 可以清算全部债务
-        }
-
-        // 计算部分清算金额
-        uint256 excessCollateral = collateralValue - minCollateralValueRequired;
-        uint256 maxLiquidationDebt = (excessCollateral * collateralConfig.liquidationThreshold) / RATE_DECIMALS;
-
-        return maxLiquidationDebt;
+        uint256 maxLiquidation = (totalDebt * safeHealthFactor - collateralValue * tokenLiquidationThreshold) / (safeHealthFactor - tokenLiquidationThreshold);
+        return maxLiquidation > totalDebt ? totalDebt : maxLiquidation;
     }
 
     /**
@@ -615,6 +672,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         require(collaterals[_tokenAddress].tokenAddress != address(0), "Collateral not supported");
         require(_debtAmountToCover > 0, "Amount must be greater than 0");
 
+        // 更新指数
         updateIndexes();
 
         // 检查健康因子
@@ -642,7 +700,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint256 totalCollateralToLiquidator = collateralAmountToLiquidator + bonusAmount;
 
         // 检查抵押物是否足够
-        uint256 userCollateralAmount = getUserCollateralAmount(_borrower, _tokenAddress);
+        uint256 userCollateralAmount = userDepositTokenAmount[_tokenAddress][_borrower];
         require(totalCollateralToLiquidator <= userCollateralAmount, "Insufficient collateral for liquidation");
 
         // 转移USDC从清算人到合约
@@ -719,48 +777,39 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // ========== 价格获取函数 ==========
 
     /**
-     * @dev 获取代币价格 (简化实现)
+     * @dev 获取代币价格
      */
     function getTokenPrice(address token) public view returns (uint256) {
-        // 简化实现，实际应该从Chainlink或其他预言机获取
-        if (token == usdcTokenAddress) {
-            return 1e6; // USDC价格为1美元
-        }
-        // 假设其他代币价格为1美元
-        return 1e6;
+        return IChainlink(chainlinkAddress).getTokenPrice(token);
     }
 
     // ========== 视图函数 ==========
 
     /**
      * @dev 获取用户健康因子信息
+     * _tokenAddress 抵押物地址
+     * _user 用户地址
      */
-    function getUserHealthInfo(address user) external view returns (
+    function getUserHealthInfo(address _tokenAddress, address _user) external view returns (
         uint256 healthFactor,
         uint256 totalCollateralValue,
         uint256 totalDebtValue,
         bool isLiquidatable
     ) {
-        if (supportedCollateralAddresses.length == 0) {
-            return (type(uint256).max, 0, 0, false);
-        }
-
-        // 使用第一个支持的抵押物计算健康因子
-        address primaryCollateral = supportedCollateralAddresses[0];
-        healthFactor = calculateHealthFactor(user, primaryCollateral);
-        totalCollateralValue = calculateUserTotalCollateralValue(user);
-        totalDebtValue = calculateUserTotalDebtValue(user);
+        healthFactor = calculateHealthFactor(_user, _tokenAddress);
+        totalCollateralValue = calculateUserTotalCollateralValue(_tokenAddress, _user);
+        totalDebtValue = calculateUserTotalDebtValue(_tokenAddress, _user);
         isLiquidatable = (healthFactor < RATE_DECIMALS);
     }
 
     struct ReturnLiquidateInfo {
-        address borrower;
-        uint256 usdcPrice;
-        uint256 tokenPrice;
-        uint256 userTotal;
-        uint256 userDeposited;
-        uint256 healthFactor;
-        uint256 liquidationThreshold;
+        address borrower; // 借款人
+        uint256 usdcPrice; // usdc价格：美元，两位小数
+        uint256 tokenPrice; // token价格：美元，两位小数
+        uint256 userTotal; // 用户债务总额：usdc
+        uint256 userDeposited; // 用户抵押物数量：usdc
+        uint256 healthFactor; // 健康因子
+        uint256 liquidationThreshold; // 清算阈值
         uint256 maxLiquidationAmount;
     }
 
