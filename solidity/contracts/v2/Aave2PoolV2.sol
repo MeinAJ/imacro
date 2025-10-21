@@ -72,6 +72,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint256 totalBorrowPrincipal; // 该抵押物的总借款本金
         uint256 liquidationThreshold;
         uint256 collateralizationRatio;
+
     }
 
     event LendDeposited(address indexed user, uint256 amount, uint256 liquidityIndex);
@@ -145,6 +146,17 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         utilizationRate = borrowed * RATE_DECIMALS / (borrowed + borrowable);
     }
 
+    function getTotalLendInfo() public view returns (uint256 totalLend, uint256 totalBorrow, uint256 utilizationRate, uint256 interestApy) {
+        uint256 currentLiquidityIndex = getCurrentLiquidityIndex();
+        uint256 currentBorrowIndex = getCurrentBorrowIndex();
+        uint256 totalLendWithInterest = (totalPrincipalLend * currentLiquidityIndex) / 1e27;
+        uint256 totalBorrowWithInterest = (totalPrincipalBorrow * currentBorrowIndex) / 1e27;
+        utilizationRate = (totalBorrowWithInterest * RATE_DECIMALS) / totalLendWithInterest;
+        totalLend = totalLendWithInterest;
+        totalBorrow = totalBorrowWithInterest;
+        interestApy = _getLendInterestApy();
+    }
+
     /**
      * @dev 更新存款和借款指数
      * 基于复利公式: index_new = index_old * (1 + rate * timeDelta)
@@ -183,6 +195,20 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         lastUpdateTimestamp = currentTimestamp;
     }
 
+    function _getLendInterestApy() internal view returns (uint256) {
+        // 计算当前利用率
+        uint256 currentUtilizationRate = getCurrentUtilizationRate();
+        // 计算借款利率 (年化)
+        uint256 borrowRate = DynamicInterestRateCalculator.calculateBorrowRate(currentUtilizationRate);
+        // 计算存款利率 (年化)
+        uint256 supplyRate = DynamicInterestRateCalculator.calculateSupplyRate(
+            currentUtilizationRate,
+            borrowRate,
+            reserveFactor
+        );
+        return supplyRate;
+    }
+
     /**
      * @dev 获取当前利用率 (实时计算)
      */
@@ -209,16 +235,6 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     /**
      * @dev 获取某个抵押代币的可借金额
-     */
-    function getTotalBorrowWithInterestByToken(address collateralToken) public view returns (uint256) {
-        require(collaterals[collateralToken].tokenAddress != address(0), "Collateral not supported");
-        Collateral storage collateral = collaterals[collateralToken];
-        uint256 totalBorrowPrincipal = collateral.totalBorrowPrincipal;
-        return (totalBorrowPrincipal * getCurrentBorrowIndex()) / 1e27;
-    }
-
-    /**
- * @dev 获取某个抵押代币的借款率
      */
     function getTotalBorrowWithInterestByToken(address collateralToken) public view returns (uint256) {
         require(collaterals[collateralToken].tokenAddress != address(0), "Collateral not supported");
