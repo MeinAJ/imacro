@@ -16,7 +16,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     uint256 public constant TOKEN_DECIMALS = DynamicInterestRateCalculator.PRECISION; // 代币精度
     uint256 public constant RATE_DECIMALS = DynamicInterestRateCalculator.RATE_PRECISION; // 利率精度6位
-    uint256 public constant DOLLAR_DECIMALS = DynamicInterestRateCalculator.DOLLAR_PRECISION; // 美元精度2位
+    uint256 public constant DOLLAR_DECIMALS = DynamicInterestRateCalculator.DOLLAR_PRECISION; // 美元精度6位
     uint256 public constant SECONDS_PER_YEAR = 365 days;
 
 

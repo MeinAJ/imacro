@@ -5,7 +5,7 @@ library DynamicInterestRateCalculator {
     uint256 public constant PRECISION = 1e18;
     uint256 public constant SECONDS_PER_DAY = 86400;
     uint256 public constant RATE_PRECISION = 1e6; // 6位精度，1000000 = 100%
-    uint256 public constant DOLLAR_PRECISION = 1e2; // 美元精度2位
+    uint256 public constant DOLLAR_PRECISION = 1e6; // 美元精度2位
 
     // 双线动态利率模型参数
     uint256 public constant OPTIMAL_UTILIZATION_RATE = 800000; // 80% 最优利用率
