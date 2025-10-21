@@ -130,6 +130,30 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     // ========== 核心指数计算函数 ==========
 
+    function getTokenBorrowable(address collateralToken) public view returns (uint256) {
+        require(collaterals[collateralToken].tokenAddress != address(0), "Collateral not supported");
+        Collateral storage collateral = collaterals[collateralToken];
+        uint256 totalCollateral = collateral.totalCollateral;
+        uint256 tokenPrice = IChainlink(chainlinkAddress).getTokenPrice(collateralToken);
+        uint256 usdcPrice = IChainlink(chainlinkAddress).getTokenPrice(usdcTokenAddress);
+
+        // （总抵押价值 - 总借款价值）* 借款率
+        uint256 borrowableUSD = (totalCollateral * tokenPrice - getTotalBorrowWithInterestByToken(collateralToken) * usdcPrice) * collateral.collateralizationRatio / RATE_DECIMALS;
+        require(borrowableUSD >= 0, "Borrowable amount is negative");
+        return borrowableUSD * DOLLAR_DECIMALS / usdcPrice;
+    }
+
+    function getTokenUtilizationRate(address collateralToken) public view returns (uint256) {
+        require(collaterals[collateralToken].tokenAddress != address(0), "Collateral not supported");
+        Collateral storage collateral = collaterals[collateralToken];
+        uint256 totalCollateral = collateral.totalCollateral;
+        uint256 tokenPrice = IChainlink(chainlinkAddress).getTokenPrice(collateralToken);
+        uint256 usdcPrice = IChainlink(chainlinkAddress).getTokenPrice(usdcTokenAddress);
+
+        // 总贷款价值（包含利息） / 总抵押价值
+        return (getTotalBorrowWithInterestByToken(collateralToken) * usdcPrice) / (totalCollateral * tokenPrice * collateral.collateralizationRatio * DOLLAR_DECIMALS);
+    }
+
     /**
      * @dev 更新存款和借款指数
      * 基于复利公式: index_new = index_old * (1 + rate * timeDelta)
@@ -190,6 +214,26 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
      */
     function getTotalBorrowWithInterest() public view returns (uint256) {
         return (totalPrincipalBorrow * getCurrentBorrowIndex()) / 1e27;
+    }
+
+    /**
+     * @dev 获取某个抵押代币的可借金额
+     */
+    function getTotalBorrowWithInterestByToken(address collateralToken) public view returns (uint256) {
+        require(collaterals[collateralToken].tokenAddress != address(0), "Collateral not supported");
+        Collateral storage collateral = collaterals[collateralToken];
+        uint256 totalBorrowPrincipal = collateral.totalBorrowPrincipal;
+        return (totalBorrowPrincipal * getCurrentBorrowIndex()) / 1e27;
+    }
+
+    /**
+ * @dev 获取某个抵押代币的借款率
+     */
+    function getTotalBorrowWithInterestByToken(address collateralToken) public view returns (uint256) {
+        require(collaterals[collateralToken].tokenAddress != address(0), "Collateral not supported");
+        Collateral storage collateral = collaterals[collateralToken];
+        uint256 totalBorrowPrincipal = collateral.totalBorrowPrincipal;
+        return (totalBorrowPrincipal * getCurrentBorrowIndex()) / 1e27;
     }
 
     /**
@@ -654,7 +698,7 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         }
 
         // 计算需要偿还多少债务才能使健康因子恢复到1.2以上(safeHealthFactor = 1.2)
-        uint256 collateralValue = calculateUserTotalCollateralValue(borrower);
+        uint256 collateralValue = calculateUserTotalCollateralValue(borrower, borrower);
         uint256 tokenLiquidationThreshold = collaterals[collateralToken].liquidationThreshold;
 
         uint256 maxLiquidation = (totalDebt * safeHealthFactor - collateralValue * tokenLiquidationThreshold) / (safeHealthFactor - tokenLiquidationThreshold);
