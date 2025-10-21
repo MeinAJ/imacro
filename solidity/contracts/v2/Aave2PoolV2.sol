@@ -130,28 +130,19 @@ contract Aave2Pool is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     // ========== 核心指数计算函数 ==========
 
-    function getTokenBorrowable(address collateralToken) public view returns (uint256) {
+    function getTokenBorrowInfo(address collateralToken) public view returns (uint256 borrowed, uint256 borrowable, uint256 utilizationRate) {
         require(collaterals[collateralToken].tokenAddress != address(0), "Collateral not supported");
         Collateral storage collateral = collaterals[collateralToken];
         uint256 totalCollateral = collateral.totalCollateral;
         uint256 tokenPrice = IChainlink(chainlinkAddress).getTokenPrice(collateralToken);
         uint256 usdcPrice = IChainlink(chainlinkAddress).getTokenPrice(usdcTokenAddress);
 
-        // （总抵押价值 - 总借款价值）* 借款率
-        uint256 borrowableUSD = (totalCollateral * tokenPrice - getTotalBorrowWithInterestByToken(collateralToken) * usdcPrice) * collateral.collateralizationRatio / RATE_DECIMALS;
-        require(borrowableUSD >= 0, "Borrowable amount is negative");
-        return borrowableUSD * DOLLAR_DECIMALS / usdcPrice;
-    }
-
-    function getTokenUtilizationRate(address collateralToken) public view returns (uint256) {
-        require(collaterals[collateralToken].tokenAddress != address(0), "Collateral not supported");
-        Collateral storage collateral = collaterals[collateralToken];
-        uint256 totalCollateral = collateral.totalCollateral;
-        uint256 tokenPrice = IChainlink(chainlinkAddress).getTokenPrice(collateralToken);
-        uint256 usdcPrice = IChainlink(chainlinkAddress).getTokenPrice(usdcTokenAddress);
-
-        // 总贷款价值（包含利息） / 总抵押价值
-        return (getTotalBorrowWithInterestByToken(collateralToken) * usdcPrice) / (totalCollateral * tokenPrice * collateral.collateralizationRatio * DOLLAR_DECIMALS);
+        // 计算总借款
+        borrowed = getTotalBorrowWithInterestByToken(collateralToken) * usdcPrice;
+        // 计算总可借款
+        borrowable = (totalCollateral * tokenPrice - getTotalBorrowWithInterestByToken(collateralToken) * usdcPrice) * collateral.collateralizationRatio / RATE_DECIMALS;
+        // 计算利用率
+        utilizationRate = borrowed * RATE_DECIMALS / (borrowed + borrowable);
     }
 
     /**
